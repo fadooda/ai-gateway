@@ -12,8 +12,7 @@ export function parsePriceIntent(text = "") {
     text.match(/\$?\s*(\d+(?:\.\d+)?)\s*-\s*\$?\s*(\d+(?:\.\d+)?)/);
 
   if (m) {
-    const a = Number(m[1]);
-    const b = Number(m[2]);
+    const a = Number(m[1]), b = Number(m[2]);
     if (Number.isFinite(a) && Number.isFinite(b)) {
       return { price_mode: "range", min_price: Math.min(a, b), max_price: Math.max(a, b) };
     }
@@ -53,18 +52,18 @@ export function parsePriceIntent(text = "") {
 }
 
 const STOPWORDS = new Set([
-  "recommend", "suggest", "show", "give",
-  "game", "games", "genre", "genres",
-  "explain", "why",
-  "one", "that", "this", "these", "those", "it",
-  "a", "an", "the",
-  "me", "i", "you", "we", "my",
+  "recommend","suggest","show","give",
+  "game","games","genre","genres",
+  "explain","why",
+  "one","that","this","these","those","it",
+  "a","an","the",
+  "me","i","you","we","my",
   "please",
-  "cost", "costs", "priced", "price", "pricing",
-  "under", "below", "less", "than", "more", "over", "at", "least",
-  "between", "and", "to",
-  "around", "about", "almost", "near", "close",
-  "from", "any", "all", "anything", "everything",
+  "cost","costs","priced","price","pricing",
+  "under","below","less","than","more","over","at","least",
+  "between","and","to",
+  "around","about","almost","near","close",
+  "from","any","all","anything","everything"
 ]);
 
 export function deriveQuery(text = "") {
@@ -76,16 +75,50 @@ export function deriveQuery(text = "") {
     .replace(/\s+/g, " ")
     .trim();
 
-  q = q
-    .replace(/[^a-z0-9\s-]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  q = q.replace(/[^a-z0-9\s-]/g, " ").replace(/\s+/g, " ").trim();
 
   const tokens = q
     .split(" ")
-    .map((t) => t.trim())
-    .filter((t) => t.length > 1)
-    .filter((t) => !STOPWORDS.has(t));
+    .map(t => t.trim())
+    .filter(t => t.length > 1)
+    .filter(t => !STOPWORDS.has(t));
 
   return tokens.length ? tokens.join(" ") : "";
+}
+
+export function applyPriceGuardrails(lastUser, args = {}) {
+  const parsed = parsePriceIntent(lastUser);
+
+  const llmProvidedPrice = Boolean(
+    (args.price_mode && args.price_mode !== "none") ||
+    args.min_price != null || args.max_price != null ||
+    args.exact_price != null || args.target_price != null
+  );
+
+  if (parsed.price_mode === "none") {
+    args.price_mode = "none";
+    delete args.min_price;
+    delete args.max_price;
+    delete args.exact_price;
+    delete args.target_price;
+    delete args.min_inclusive;
+    delete args.max_inclusive;
+    return args;
+  }
+
+  // user DID specify price; enforce parsed (even if LLM did)
+  return { ...args, ...parsed };
+}
+
+/**
+ * Use LLM query if provided, otherwise fallback to user message.
+ * Then sanitize into keywords.
+ */
+export function normalizeQuery(lastUser, args = {}) {
+  const baseQuery =
+    (typeof args.query === "string" && args.query.trim())
+      ? args.query
+      : lastUser;
+
+  return { ...args, query: deriveQuery(baseQuery) };
 }
